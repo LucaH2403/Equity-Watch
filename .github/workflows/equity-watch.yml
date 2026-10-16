@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Send a test email only, or run the watchlist monitor"
+        type: choice
+        options:
+          - monitor
+          - test-email
+        default: monitor
+        required: true
 
 permissions:
   contents: read
@@ -22,12 +31,14 @@ jobs:
           python-version: "3.12"
       - name: Restore delivery state
         uses: actions/cache/restore@v4
+        if: github.event_name != 'workflow_dispatch' || inputs.mode != 'test-email'
         with:
           path: .state/equity-watch-state.json
           key: equity-watch-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             equity-watch-${{ github.ref_name }}-
       - name: Fetch watchlist and send due email
+        if: github.event_name != 'workflow_dispatch' || inputs.mode != 'test-email'
         env:
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
@@ -38,9 +49,19 @@ jobs:
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: python equity_watch.py
+      - name: Send SMTP test email
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'test-email'
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python equity_watch.py --test-email
       - name: Save delivery state
         uses: actions/cache/save@v4
-        if: success()
+        if: success() && (github.event_name != 'workflow_dispatch' || inputs.mode != 'test-email')
         with:
           path: .state/equity-watch-state.json
           key: equity-watch-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}

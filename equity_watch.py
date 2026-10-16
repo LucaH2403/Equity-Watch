@@ -80,16 +80,16 @@ class Config:
     email_to: tuple[str, ...]
 
     @classmethod
-    def from_env(cls) -> "Config":
-        required = (
-            "FINNHUB_API_KEY",
-            "SEC_USER_AGENT",
+    def from_env(cls, require_providers: bool = True) -> "Config":
+        required = [
             "SMTP_HOST",
             "SMTP_USERNAME",
             "SMTP_PASSWORD",
             "EMAIL_FROM",
             "EMAIL_TO",
-        )
+        ]
+        if require_providers:
+            required.extend(("FINNHUB_API_KEY", "SEC_USER_AGENT"))
         missing = [name for name in required if not os.environ.get(name, "").strip()]
         if missing:
             raise EquityWatchError(f"Missing required environment variables: {', '.join(missing)}")
@@ -103,8 +103,8 @@ class Config:
         if not recipients:
             raise EquityWatchError("EMAIL_TO must contain at least one email address")
         return cls(
-            finnhub_api_key=os.environ["FINNHUB_API_KEY"].strip(),
-            sec_user_agent=os.environ["SEC_USER_AGENT"].strip(),
+            finnhub_api_key=os.environ.get("FINNHUB_API_KEY", "").strip(),
+            sec_user_agent=os.environ.get("SEC_USER_AGENT", "").strip(),
             smtp_host=os.environ["SMTP_HOST"].strip(),
             smtp_port=smtp_port,
             smtp_username=os.environ["SMTP_USERNAME"].strip(),
@@ -333,6 +333,15 @@ def send_email(config: Config, subject: str, body: str) -> None:
         raise EquityWatchError(f"Could not send email: {exc}") from exc
 
 
+def send_test_email(config: Config) -> str:
+    send_email(
+        config,
+        "Equity Watch test email",
+        "SMTP test successful: Equity Watch can send email to this address.",
+    )
+    return f"SMTP test email sent to {', '.join(config.email_to)}."
+
+
 def load_state(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {"digest_sent_date": None, "sent_alert_ids": []}
@@ -399,10 +408,16 @@ def run(config: Config, state_path: Path, now: datetime, dry_run: bool = False) 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="Fetch and print the digest without sending email or changing state")
+    parser.add_argument("--test-email", action="store_true", help="Send a test email without fetching data or changing delivery state")
     parser.add_argument("--state-file", type=Path, default=STATE_PATH, help="Path to the JSON state file")
     args = parser.parse_args(argv)
+    if args.dry_run and args.test_email:
+        parser.error("--dry-run and --test-email cannot be used together")
     try:
-        config = Config.from_env()
+        config = Config.from_env(require_providers=not args.test_email)
+        if args.test_email:
+            print(send_test_email(config))
+            return 0
         print(run(config, args.state_file, utc_now(), args.dry_run))
     except EquityWatchError as exc:
         print(f"equity-watch: {exc}", file=sys.stderr)
