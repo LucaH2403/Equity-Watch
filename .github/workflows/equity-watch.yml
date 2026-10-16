@@ -1,0 +1,46 @@
+name: Equity Watch
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: equity-watch-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Restore delivery state
+        uses: actions/cache/restore@v4
+        with:
+          path: .state/equity-watch-state.json
+          key: equity-watch-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            equity-watch-${{ github.ref_name }}-
+      - name: Fetch watchlist and send due email
+        env:
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python equity_watch.py
+      - name: Save delivery state
+        uses: actions/cache/save@v4
+        if: success()
+        with:
+          path: .state/equity-watch-state.json
+          key: equity-watch-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
