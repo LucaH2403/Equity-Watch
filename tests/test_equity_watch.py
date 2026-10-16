@@ -12,6 +12,7 @@ from equity_watch import (
     get_recent_filings,
     is_urgent_news,
     load_state,
+    main,
     run,
     request_json,
     save_state,
@@ -67,6 +68,19 @@ class EquityWatchTests(unittest.TestCase):
         }
         with patch.dict("os.environ", env, clear=True):
             self.assertEqual(Config.from_env().smtp_port, 587)
+
+    def test_email_only_config_does_not_require_provider_credentials(self):
+        env = {
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_USERNAME": "user",
+            "SMTP_PASSWORD": "secret",
+            "EMAIL_FROM": "watch@example.com",
+            "EMAIL_TO": "one@example.com",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            config = Config.from_env(require_providers=False)
+        self.assertEqual(config.finnhub_api_key, "")
+        self.assertEqual(config.sec_user_agent, "")
 
     @patch("equity_watch.urllib.request.urlopen")
     def test_provider_error_does_not_expose_query_token(self, urlopen):
@@ -176,6 +190,22 @@ class EquityWatchTests(unittest.TestCase):
             self.assertIn("DAILY DIGEST EMAIL", output)
             send.assert_not_called()
             self.assertFalse(path.exists())
+
+    @patch("equity_watch.send_email")
+    @patch("equity_watch.collect_snapshot")
+    def test_test_email_sends_without_fetching_or_changing_state(self, collect, send):
+        env = {
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_USERNAME": "user",
+            "SMTP_PASSWORD": "secret",
+            "EMAIL_FROM": "watch@example.com",
+            "EMAIL_TO": "recipient@example.com",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            self.assertEqual(main(["--test-email"]), 0)
+        send.assert_called_once()
+        self.assertEqual(send.call_args.args[1], "Equity Watch test email")
+        collect.assert_not_called()
 
     @patch("equity_watch.collect_snapshot")
     @patch("equity_watch.send_email")

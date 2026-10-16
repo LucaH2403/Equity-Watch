@@ -18,6 +18,8 @@ The GitHub Actions workflow checks once an hour. It sends a digest at the first 
 2. Set `EMAIL_TO` to one or more comma-separated recipient addresses. Configure `SMTP_*` for an SMTP account that permits authenticated STARTTLS mail submission.
 3. Ensure GitHub Actions is enabled for the repository. The workflow runs hourly (at minute 17 UTC) and can also be run manually from the Actions tab. GitHub may delay scheduled jobs, and schedules run only from the repository's default branch.
 
+To test SMTP without fetching stock data, alerting on live headlines, or changing the monitor's delivery state, open **Actions > Equity Watch > Run workflow**, select **test-email**, and run it. A successful run sends a clearly labelled test message to `EMAIL_TO`. This requires the SMTP secrets only. Choose **monitor** when you intend to fetch current data and run the actual digest/alert logic.
+
 | Secret | Purpose |
 | --- | --- |
 | `FINNHUB_API_KEY` | Finnhub API token for company news, quotes, and earnings calendar |
@@ -41,6 +43,8 @@ python equity_watch.py
 ```
 
 `--dry-run` fetches and prints the digest and any alerts without sending email or changing the delivery-state file. Normal execution stores state at `.state/equity-watch-state.json`; use `--state-file PATH` to choose a different path. The program uses UTC to decide daily digest delivery.
+
+To test SMTP locally without requiring Finnhub/SEC credentials or changing delivery state, set the SMTP and email environment variables and run `python equity_watch.py --test-email`.
 
 Run tests without network or email access:
 
